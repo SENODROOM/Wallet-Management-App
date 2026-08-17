@@ -1,0 +1,6 @@
+[submodule "backend"]
+    path = backend
+    url = https://github.com/SENODROOM/Wallet-Management-App-Backend.git
+[submodule "frontend"]
+    path = frontend
+    url = https://github.com/SENODROOM/Wallet-Management-App-Frontend.git
