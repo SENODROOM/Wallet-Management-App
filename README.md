@@ -7,24 +7,32 @@ A small personal finance notepad with three sections — **Quantum Logics Income
 - Three editable ledgers: a simple income log, and two budget-vs-spend trackers (Poly Learning Initiative, Monthly Budget) with an adjustable budget amount and a live "Remaining" total.
 - Email/password sign up and sign in. Passwords are hashed with bcrypt; sessions are a JWT stored in an httpOnly cookie.
 - Each account has its own private data — nothing is shared between users.
-- Autosaves to MongoDB (debounced ~500ms after the last keystroke); a status pill in the header shows saving/saved/error.
-- Responsive, light/dark-aware UI with no build step and no frontend dependencies.
+- Autosaves to MongoDB (debounced ~500ms after the last keystroke); a status dot in the utility bar shows saving/synced/error.
+- Responsive, light/dark-aware UI.
 
 ## Project structure
 
+`backend/` and `frontend/` are separate git repositories, wired into this repo as submodules (see `.gitmodules`).
+
 ```
 .
-├── backend/              Express API + MongoDB models
-│   ├── middleware/auth.js    JWT cookie auth (attachUser, requireAuth)
-│   ├── models/                Mongoose schemas (User, Section)
-│   ├── routes/                 /api/auth/*  and  /api/state*
-│   ├── server.js               App entry point; also serves the frontend
-│   ├── seed.js                  One-time helper to load starter data for an account
+├── backend/                    Express API + MongoDB models (own repo/remote)
+│   ├── middleware/auth.js         JWT cookie auth (attachUser, requireAuth)
+│   ├── models/                     Mongoose schemas (User, Section)
+│   ├── routes/                      /api/auth/*  and  /api/state*
+│   ├── server.js                    App entry point; serves the built frontend in production
+│   ├── seed.js                       One-time helper to load starter data for an account
 │   ├── package.json
 │   └── .env.example
-└── frontend/              Static HTML/CSS/JS, no build step
-    ├── login.html            Sign in / sign up
-    └── notepad.html           The three ledgers
+└── frontend/                   React (Vite) app (own repo/remote)
+    ├── index.html
+    └── src/
+        ├── App.jsx                 Auth gate — decides Login vs Notepad
+        ├── api.js                   Small fetch wrapper for the backend API
+        └── components/
+            ├── Login.jsx            Sign in / sign up
+            ├── Notepad.jsx          Page shell, utility bar, the three ledgers
+            └── Ledger.jsx           One editable section (rows, budget, autosave)
 ```
 
 ## Setup
@@ -32,13 +40,14 @@ A small personal finance notepad with three sections — **Quantum Logics Income
 **1. Install dependencies**
 
 ```bash
-cd backend
-npm install
+cd backend && npm install
+cd ../frontend && npm install
 ```
 
 **2. Configure environment variables**
 
 ```bash
+cd backend
 cp .env.example .env
 ```
 
@@ -54,20 +63,33 @@ Edit `backend/.env`:
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 ```
 
-**3. Start the server**
+**3. Run it**
+
+During development, run the backend and frontend separately — Vite proxies `/api` requests to the backend:
 
 ```bash
-npm start        # plain node
-npm run dev       # nodemon, auto-restarts on file changes
+# terminal 1
+cd backend && npm run dev        # http://localhost:5000
+
+# terminal 2
+cd frontend && npm run dev       # http://localhost:5173
 ```
 
-Visit `http://localhost:5000`. You'll be redirected to `/login.html` — create an account there.
+Open `http://localhost:5173`, create an account, and use the app.
+
+For a single deployed instance, build the frontend and let Express serve it:
+
+```bash
+cd frontend && npm run build     # writes frontend/dist
+cd ../backend && npm start       # now serves the app at http://localhost:5000
+```
 
 **4. (Optional) Load the original starter data**
 
 After signing up, load the original notepad figures into your new account:
 
 ```bash
+cd backend
 npm run seed -- youremail@example.com
 ```
 
@@ -75,10 +97,12 @@ This only fills sections that are still empty — it won't overwrite anything yo
 
 ## How it works
 
-- `frontend/notepad.html` calls `GET /api/state` on load and `PUT /api/state/:section` (debounced) whenever a row, item name, price, or budget changes.
+- `App.jsx` checks `GET /api/auth/me` on load and renders `Login` or `Notepad` accordingly — there's no client-side router, just that one gate.
+- `Notepad.jsx` fetches `GET /api/state` once, and each `Ledger` autosaves its own section via `PUT /api/state/:section` (debounced ~500ms) whenever a row, item name, price, or budget changes.
 - Each of the three sections is stored as one MongoDB document: `{ user, section, budget, items: [{ day, name, price }] }` in the `sections` collection.
-- All `/api/state*` routes require a valid session cookie; `GET /api/auth/me` is used by the frontend to confirm who's signed in.
+- All `/api/state*` routes require a valid session cookie.
 
 ## Tech stack
 
-Node.js, Express, MongoDB/Mongoose, bcryptjs, jsonwebtoken — vanilla HTML/CSS/JS on the frontend (no framework, no build tooling).
+**Backend:** Node.js, Express, MongoDB/Mongoose, bcryptjs, jsonwebtoken.
+**Frontend:** React, Vite. No CSS framework — the design is a small hand-written system (serif headings, monospace tabular figures, hairline rules) defined in `frontend/src/styles.css`.
