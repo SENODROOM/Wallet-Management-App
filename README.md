@@ -6,6 +6,7 @@ A small personal finance notepad with three sections — **Quantum Logics Income
 
 - Three editable ledgers: a simple income log, and two budget-vs-spend trackers (Poly Learning Initiative, Monthly Budget) with an adjustable budget amount and a live "Remaining" total.
 - Email/password sign up and sign in. Passwords are hashed with bcrypt; sessions are a JWT stored in an httpOnly cookie.
+- The Monthly Budget runs a calendar month: on the 1st the finished month is saved to its own record and a fresh budget opens, with the budget amount carried over. Saved months sit in a strip above the ledger, read-only and still printable.
 - Each account has its own private data — nothing is shared between users.
 - Autosaves to MongoDB (debounced ~500ms after the last keystroke); a status dot in the utility bar shows saving/synced/error.
 - Responsive, light/dark-aware UI.
@@ -18,8 +19,10 @@ A small personal finance notepad with three sections — **Quantum Logics Income
 .
 ├── backend/                    Express API + MongoDB models (own repo/remote)
 │   ├── middleware/auth.js         JWT cookie auth (attachUser, requireAuth)
-│   ├── models/                     Mongoose schemas (User, Section)
-│   ├── routes/                      /api/auth/*  and  /api/state*
+│   ├── lib/period.js                Month-boundary logic for the Monthly Budget
+│   ├── models/                     Mongoose schemas (User, Section, Notepad, MonthlyArchive)
+│   ├── routes/                      /api/auth/*, /api/state*, /api/notepads*, /api/monthly*
+│   ├── test/period.test.js       Month rollover cases (npm test)
 │   ├── server.js                    App entry point; serves the built frontend in production
 │   ├── seed.js                       One-time helper to load starter data for an account
 │   ├── package.json
@@ -31,8 +34,9 @@ A small personal finance notepad with three sections — **Quantum Logics Income
         ├── api.js                   Small fetch wrapper for the backend API
         └── components/
             ├── Login.jsx            Sign in / sign up
-            ├── Notepad.jsx          Page shell, utility bar, the three ledgers
-            └── Ledger.jsx           One editable section (rows, budget, autosave)
+            ├── Notepad.jsx          Page shell, utility bar, the ledgers
+            ├── MonthlyBudget.jsx    Month strip, rollover, saved-month records
+            └── Ledger.jsx           One section (rows, budget, autosave; read-only for saved months)
 ```
 
 ## Setup
@@ -100,7 +104,10 @@ This only fills sections that are still empty — it won't overwrite anything yo
 - `App.jsx` checks `GET /api/auth/me` on load and renders `Login` or `Notepad` accordingly — there's no client-side router, just that one gate.
 - `Notepad.jsx` fetches `GET /api/state` once, and each `Ledger` autosaves its own section via `PUT /api/state/:section` (debounced ~500ms) whenever a row, item name, price, or budget changes.
 - Each of the three sections is stored as one MongoDB document: `{ user, section, budget, items: [{ day, name, price }] }` in the `sections` collection.
-- All `/api/state*` routes require a valid session cookie.
+- The browser owns the month boundary — it is the only side that knows the user's local date — so on load (and every minute, for a tab left open past midnight on the 1st) it posts the current `YYYY-MM` to `POST /api/monthly/rollover`. If the live section belongs to an earlier month, the server copies it into the `monthlyarchives` collection under that month and clears the entries and note, keeping the budget amount. Re-opening the month already in progress is a no-op.
+- Sections saved before this existed carry no month, so the rollover dates them from their own day labels ("16 Aug (Saturday)") — see `backend/lib/period.js`, covered by `npm test` in `backend/`.
+- Saved months are read via `GET /api/monthly/history` (one summary per month) and `GET /api/monthly/history/:period` (the full record). They are records, not sheets: the UI renders them without inputs, and there is no route to edit one.
+- All `/api/state*`, `/api/notepads*` and `/api/monthly*` routes require a valid session cookie.
 
 ## Tech stack
 
